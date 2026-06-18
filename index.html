@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helicopter Traffic Heatmap — Larchmont, NY</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+#header {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+#header h1 { font-size: 14px; font-weight: 600; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+
+#filters {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.filter-group { display: flex; align-items: center; gap: 6px; }
+.filter-label { font-size: 11px; color: #8b949e; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.btn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: #58a6ff; color: #58a6ff; }
+.btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.btn.alt-low.active     { background: #2ea043; border-color: #2ea043; }
+.btn.alt-midlow.active  { background: #e3b341; border-color: #e3b341; color: #0d1117; }
+.btn.alt-midhigh.active { background: #ff7b00; border-color: #ff7b00; color: #fff; }
+.btn.alt-high.active    { background: #f44336; border-color: #f44336; color: #fff; }
+.btn.alt-unknown.active { background: #6e7681; border-color: #6e7681; }
+
+/* View mode toggle — prominent */
+.mode-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 16px;
+  border: 1px solid #30363d;
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mode-btn.active { background: #388bfd22; border-color: #388bfd; color: #388bfd; }
+
+#stats {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #8b949e;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#stats strong { color: #e6edf3; font-size: 15px; font-weight: 600; display: block; }
+
+#map-wrap { position: relative; flex: 1; }
+#map { width: 100%; height: 100%; }
+
+#legend {
+  position: absolute;
+  bottom: 28px;
+  right: 10px;
+  z-index: 1000;
+  background: rgba(22,27,34,0.93);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 11px;
+  color: #8b949e;
+  min-width: 150px;
+}
+#legend .lt { font-weight: 600; color: #e6edf3; margin-bottom: 6px; font-size: 12px; }
+.legend-bar { height: 8px; border-radius: 4px; background: linear-gradient(to right,#0000ff55,#00ffff99,#00ff00bb,#ffff00dd,#ff0000ff); margin: 5px 0 3px; }
+.legend-labels { display: flex; justify-content: space-between; font-size: 10px; }
+.alt-legend { margin-top: 10px; border-top: 1px solid #30363d; padding-top: 8px; }
+.alt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+/* Trail legend (hidden in heatmap mode) */
+#trail-legend { display: none; }
+#heat-legend { display: block; }
+
+#no-data {
+  display: none;
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  z-index: 1001;
+  background: rgba(22,27,34,0.96);
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 24px 32px;
+  text-align: center;
+  max-width: 320px;
+}
+#no-data p { color: #8b949e; font-size: 13px; line-height: 1.6; margin-top: 8px; }
+
+/* Tooltip for trail hover */
+#tooltip {
+  display: none;
+  position: fixed;
+  background: rgba(22,27,34,0.97);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #e6edf3;
+  pointer-events: none;
+  z-index: 9000;
+  max-width: 200px;
+  line-height: 1.6;
+}
+
+.file-btn {
+  font-size: 11px;
+  color: #484f58;
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: transparent;
+  transition: all 0.15s;
+}
+.file-btn:hover { color: #8b949e; border-color: #8b949e; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>🚁 Helicopter Traffic — Larchmont, NY</h1>
+
+  <!-- View mode toggle -->
+  <div class="btn-group">
+    <button class="mode-btn active" id="modeHeat" onclick="setMode('heat')">🔥 Heatmap</button>
+    <button class="mode-btn"        id="modeTrail" onclick="setMode('trail')">✈ Trails</button>
+  </div>
+
+  <div class="btn-group" id="timeBtns"></div>
+
+  <div id="stats">
+    <div><strong id="statSightings">—</strong>sightings</div>
+    <div><strong id="statUnique">—</strong>aircraft</div>
+    <div><strong id="statPeriod">—</strong>period</div>
+  </div>
+  <label class="file-btn" title="Load heatmap_data.json">
+    📂 Load data
+    <input type="file" id="fileInput" accept=".json" style="display:none">
+  </label>
+</div>
+
+<div id="filters">
+  <div class="filter-group">
+    <span class="filter-label">Altitude</span>
+    <div class="btn-group">
+      <button class="btn alt-low     active" data-alt="low">Low &lt;800ft</button>
+      <button class="btn alt-midlow  active" data-alt="midlow">Mid 800–1500ft</button>
+      <button class="btn alt-midhigh active" data-alt="midhigh">HPN 1500–1750ft</button>
+      <button class="btn alt-high    active" data-alt="high">High &gt;1750ft</button>
+      <button class="btn alt-unknown active" data-alt="unknown">Unknown</button>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <span class="filter-label">Time of day</span>
+    <div class="btn-group">
+      <button class="btn active" data-tod="night">Night 12–6am</button>
+      <button class="btn active" data-tod="morning">Morning 6–12pm</button>
+      <button class="btn active" data-tod="afternoon">Afternoon 12–6pm</button>
+      <button class="btn active" data-tod="evening">Evening 6–12am</button>
+    </div>
+  </div>
+
+  <div class="filter-group">
+    <span class="filter-label">Day of week</span>
+    <div class="btn-group">
+      <button class="btn active" data-dow="0">Sun</button>
+      <button class="btn active" data-dow="1">Mon</button>
+      <button class="btn active" data-dow="2">Tue</button>
+      <button class="btn active" data-dow="3">Wed</button>
+      <button class="btn active" data-dow="4">Thu</button>
+      <button class="btn active" data-dow="5">Fri</button>
+      <button class="btn active" data-dow="6">Sat</button>
+    </div>
+  </div>
+</div>
+
+<div id="map-wrap">
+  <div id="map"></div>
+
+  <div id="legend">
+    <div class="lt" id="legendTitle">Density</div>
+
+    <!-- Heatmap legend -->
+    <div id="heat-legend">
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span>Low</span><span>High</span></div>
+    </div>
+
+    <!-- Trail legend -->
+    <div id="trail-legend">
+      <div class="alt-legend">
+        <div style="margin-bottom:5px"><span style="display:inline-block;width:24px;height:3px;background:#2ea043;vertical-align:middle;margin-right:5px;border-radius:2px"></span>Low &lt;800ft</div>
+        <div style="margin-bottom:5px"><span style="display:inline-block;width:24px;height:3px;background:#e3b341;vertical-align:middle;margin-right:5px;border-radius:2px"></span>Mid 800–1500ft</div>
+        <div style="margin-bottom:5px"><span style="display:inline-block;width:24px;height:3px;background:#ff7b00;vertical-align:middle;margin-right:5px;border-radius:2px"></span>HPN 1500–1750ft</div>
+        <div style="margin-bottom:5px"><span style="display:inline-block;width:24px;height:3px;background:#f44336;vertical-align:middle;margin-right:5px;border-radius:2px"></span>High &gt;1750ft</div>
+        <div><span style="display:inline-block;width:24px;height:3px;background:#6e7681;vertical-align:middle;margin-right:5px;border-radius:2px"></span>Unknown</div>
+      </div>
+      <div style="margin-top:8px;border-top:1px solid #30363d;padding-top:8px;font-size:10px;color:#484f58">
+        Thicker lines = more passages<br>Hover trail for aircraft details
+      </div>
+    </div>
+
+    <!-- Shared alt legend for heatmap mode -->
+    <div class="alt-legend" id="heat-alt-legend">
+      <div style="margin-bottom:4px"><span class="alt-dot" style="background:#2ea043"></span>Low &lt;800ft</div>
+      <div style="margin-bottom:4px"><span class="alt-dot" style="background:#e3b341"></span>Mid 800–1500ft</div>
+      <div style="margin-bottom:4px"><span class="alt-dot" style="background:#ff7b00"></span>HPN 1500–1750ft</div>
+      <div style="margin-bottom:4px"><span class="alt-dot" style="background:#f44336"></span>High &gt;1750ft</div>
+      <div><span class="alt-dot" style="background:#6e7681"></span>Unknown</div>
+    </div>
+  </div>
+
+  <div id="no-data">
+    <div style="font-size:28px">🚁</div>
+    <div style="font-weight:600;color:#e6edf3;margin-top:8px">No data for this selection</div>
+    <p>Load your <code>heatmap_data.json</code> using the button above, or adjust the filters.</p>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+const ANTENNA   = { lat: 40.91866, lon: -73.74738 };
+const RADIUS_KM = 10;
+
+// Max gap between consecutive sightings of same aircraft to draw a trail segment (seconds)
+const MAX_TRAIL_GAP_SEC = 600; // 10 minutes
+
+const TIME_RANGES = [
+  { label:"1 day",    days:1 },
+  { label:"1 week",   days:7 },
+  { label:"2 weeks",  days:14 },
+  { label:"1 month",  days:30 },
+  { label:"2 months", days:60 },
+  { label:"3 months", days:90 },
+  { label:"6 months", days:180 },
+  { label:"All time", days:99999 },
+];
+
+const TOD_RANGES = {
+  night:     [0,  6],
+  morning:   [6,  12],
+  afternoon: [12, 18],
+  evening:   [18, 24],
+};
+
+// Altitude band colors
+const ALT_COLORS = {
+  low:     "#2ea043",   // green  — <800ft
+  midlow:  "#e3b341",   // yellow — 800-1500ft
+  midhigh: "#ff7b00",   // orange — 1500-1750ft (HPN corridor)
+  high:    "#f44336",   // red    — >1750ft
+  unknown: "#6e7681",   // gray
+};
+
+let map, heatLayer, trailLayer;
+let allPoints = [];
+let activeRange = TIME_RANGES[3];
+let currentMode = 'heat'; // 'heat' or 'trail'
+
+const activeAlt = new Set(["low","midlow","midhigh","high","unknown"]);
+const activeTod = new Set(["night","morning","afternoon","evening"]);
+const activeDow = new Set([0,1,2,3,4,5,6]);
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+
+function initMap() {
+  map = L.map("map", { center:[ANTENNA.lat, ANTENNA.lon], zoom:12 });
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution:'&copy; <a href="https://carto.com/">CARTO</a>',
+    subdomains:"abcd", maxZoom:19,
+  }).addTo(map);
+
+  // 10km capture radius
+  L.circle([ANTENNA.lat, ANTENNA.lon], {
+    radius: RADIUS_KM * 1000,
+    color:"#58a6ff", weight:1, opacity:0.35,
+    fillColor:"#58a6ff", fillOpacity:0.03,
+  }).addTo(map);
+
+  // 2km Larchmont focus ring
+  L.circle([ANTENNA.lat, ANTENNA.lon], {
+    radius: 2000,
+    color:"#ff7b54", weight:1, opacity:0.5,
+    fillColor:"#ff7b54", fillOpacity:0.04,
+    dashArray:"6 4",
+  }).bindTooltip("Larchmont 2km focus", {permanent:false}).addTo(map);
+
+  // Antenna marker
+  L.circleMarker([ANTENNA.lat, ANTENNA.lon], {
+    radius:6, color:"#ff7b54", weight:2,
+    fillColor:"#ff7b54", fillOpacity:1,
+  }).bindTooltip("ADS-B Antenna", {permanent:false}).addTo(map);
+
+  heatLayer = L.heatLayer([], {
+    radius:35, blur:20, maxZoom:17,
+    minOpacity: 0.5,
+    max: 5,
+    gradient:{
+      0.0:"#0000ff",
+      0.2:"#00bcd4",
+      0.4:"#00e676",
+      0.6:"#ffeb3b",
+      0.8:"#ff9800",
+      1.0:"#f44336",
+    },
+  }).addTo(map);
+
+  trailLayer = L.layerGroup().addTo(map);
+}
+
+// ── Mode switching ────────────────────────────────────────────────────────────
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById("modeHeat").classList.toggle("active",  mode === 'heat');
+  document.getElementById("modeTrail").classList.toggle("active", mode === 'trail');
+
+  // Legend swap
+  document.getElementById("legendTitle").textContent   = mode === 'heat' ? 'Density' : 'Altitude';
+  document.getElementById("heat-legend").style.display     = mode === 'heat'  ? 'block' : 'none';
+  document.getElementById("trail-legend").style.display    = mode === 'trail' ? 'block' : 'none';
+  document.getElementById("heat-alt-legend").style.display = mode === 'heat'  ? 'block' : 'none';
+
+  render();
+}
+
+// ── Time/filter helpers ───────────────────────────────────────────────────────
+
+function getHour(ts) { return new Date(ts * 1000).getHours(); }
+function getDow(ts)  { return new Date(ts * 1000).getDay(); }
+function getTod(hour) {
+  for (const [key,[start,end]] of Object.entries(TOD_RANGES)) {
+    if (hour >= start && hour < end) return key;
+  }
+  return "night";
+}
+
+function passesFilters(p, cutoff) {
+  if (p.ts < cutoff) return false;
+  if (!activeAlt.has(p.alt_band || "unknown")) return false;
+  if (!activeTod.has(getTod(getHour(p.ts)))) return false;
+  if (!activeDow.has(getDow(p.ts))) return false;
+  return true;
+}
+
+// ── Trail building ────────────────────────────────────────────────────────────
+
+function buildTrails(filtered) {
+  // Group by ICAO, sort by time
+  const byIcao = {};
+  filtered.forEach(p => {
+    if (!byIcao[p.icao]) byIcao[p.icao] = [];
+    byIcao[p.icao].push(p);
+  });
+  Object.values(byIcao).forEach(arr => arr.sort((a,b) => a.ts - b.ts));
+
+  // Count how many times each segment is traversed (for line weight)
+  // We use a simple grid-cell key to detect overlapping segments
+  const segmentCounts = {};
+  const segments = []; // { latlngs, alt_band, icao, callsign, count }
+
+  Object.entries(byIcao).forEach(([icao, points]) => {
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i];
+      const b = points[i+1];
+      const gap = b.ts - a.ts;
+      if (gap > MAX_TRAIL_GAP_SEC) continue; // too long a gap — skip
+
+      // Use midpoint rounded to ~0.5km grid as segment key for overlap counting
+      const midLat = ((a.lat + b.lat) / 2).toFixed(3);
+      const midLon = ((a.lon + b.lon) / 2).toFixed(3);
+      const key = `${midLat},${midLon}`;
+      segmentCounts[key] = (segmentCounts[key] || 0) + 1;
+
+      segments.push({
+        latlngs: [[a.lat, a.lon], [b.lat, b.lon]],
+        alt_band: a.alt_band || "unknown",
+        icao,
+        callsign: a.callsign || icao,
+        alt: a.alt,
+        speed: a.speed,
+        ts: a.ts,
+        segKey: key,
+      });
+    }
+  });
+
+  return { segments, segmentCounts };
+}
+
+function formatTime(ts) {
+  return new Date(ts * 1000).toLocaleString("en-US", {
+    month:"short", day:"numeric",
+    hour:"numeric", minute:"2-digit", hour12:true
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render() {
+  const nowSec = Date.now() / 1000;
+  const cutoff = nowSec - activeRange.days * 86400;
+  const filtered = allPoints.filter(p => passesFilters(p, cutoff));
+
+  // Clear layers
+  heatLayer.setLatLngs([]);
+  trailLayer.clearLayers();
+
+  if (currentMode === 'heat') {
+    heatLayer.setLatLngs(filtered.map(p => [p.lat, p.lon, 1]));
+  } else {
+    // Trail mode
+    const { segments, segmentCounts } = buildTrails(filtered);
+    const tooltip = document.getElementById("tooltip");
+
+    segments.forEach(seg => {
+      const count = segmentCounts[seg.segKey] || 1;
+      const weight = Math.min(1 + count * 1.5, 8); // 1px min, 8px max
+      const color = ALT_COLORS[seg.alt_band] || ALT_COLORS.unknown;
+      const opacity = Math.min(0.4 + count * 0.15, 0.9);
+
+      const line = L.polyline(seg.latlngs, {
+        color,
+        weight,
+        opacity,
+        lineCap: "round",
+        lineJoin: "round",
+      });
+
+      // Arrow decorator — show direction
+      // Simple arrowhead at midpoint using a small marker
+      const mid = [
+        (seg.latlngs[0][0] + seg.latlngs[1][0]) / 2,
+        (seg.latlngs[0][1] + seg.latlngs[1][1]) / 2,
+      ];
+
+      // Hover tooltip
+      line.on("mouseover", e => {
+        tooltip.style.display = "block";
+        tooltip.innerHTML = [
+          `<strong>${seg.callsign}</strong>`,
+          `ICAO: ${seg.icao}`,
+          seg.alt ? `Alt: ${seg.alt.toLocaleString()} ft (${seg.alt_band})` : `Alt: ${seg.alt_band}`,
+          seg.speed ? `Speed: ${Math.round(seg.speed)} kts` : "",
+          `Time: ${formatTime(seg.ts)}`,
+          count > 1 ? `<span style="color:#58a6ff">${count} passages here</span>` : "",
+        ].filter(Boolean).join("<br>");
+      });
+      line.on("mousemove", e => {
+        tooltip.style.left = (e.originalEvent.clientX + 14) + "px";
+        tooltip.style.top  = (e.originalEvent.clientY - 10) + "px";
+      });
+      line.on("mouseout", () => { tooltip.style.display = "none"; });
+
+      trailLayer.addLayer(line);
+    });
+  }
+
+  // Stats
+  const unique = new Set(filtered.map(p => p.icao)).size;
+  document.getElementById("statSightings").textContent = filtered.length.toLocaleString();
+  document.getElementById("statUnique").textContent    = unique.toLocaleString();
+
+  if (filtered.length > 0) {
+    const minTs = Math.min(...filtered.map(p => p.ts));
+    const maxTs = Math.max(...filtered.map(p => p.ts));
+    const fmt = ts => new Date(ts*1000).toLocaleDateString("en-US",{month:"short",day:"numeric"});
+    document.getElementById("statPeriod").textContent =
+      minTs === maxTs ? fmt(minTs) : fmt(minTs) + "–" + fmt(maxTs);
+    document.getElementById("no-data").style.display = "none";
+  } else {
+    document.getElementById("statPeriod").textContent = "—";
+    document.getElementById("no-data").style.display = "block";
+  }
+}
+
+// ── UI wiring ─────────────────────────────────────────────────────────────────
+
+function buildTimeButtons() {
+  const container = document.getElementById("timeBtns");
+  TIME_RANGES.forEach(r => {
+    const btn = document.createElement("button");
+    btn.className = "btn" + (r === activeRange ? " active" : "");
+    btn.textContent = r.label;
+    btn.onclick = () => {
+      activeRange = r;
+      document.querySelectorAll("#timeBtns .btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      render();
+    };
+    container.appendChild(btn);
+  });
+}
+
+function buildFilterListeners() {
+  document.querySelectorAll("[data-alt]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.alt;
+      if (activeAlt.has(v)) { activeAlt.delete(v); btn.classList.remove("active"); }
+      else                   { activeAlt.add(v);    btn.classList.add("active");    }
+      render();
+    });
+  });
+  document.querySelectorAll("[data-tod]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.tod;
+      if (activeTod.has(v)) { activeTod.delete(v); btn.classList.remove("active"); }
+      else                   { activeTod.add(v);    btn.classList.add("active");    }
+      render();
+    });
+  });
+  document.querySelectorAll("[data-dow]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = parseInt(btn.dataset.dow);
+      if (activeDow.has(v)) { activeDow.delete(v); btn.classList.remove("active"); }
+      else                   { activeDow.add(v);    btn.classList.add("active");    }
+      render();
+    });
+  });
+}
+
+// ── Data loading ──────────────────────────────────────────────────────────────
+
+function generateDemoData() {
+  const now = Math.floor(Date.now() / 1000);
+  const points = [];
+  // Simulate Wall St → Hamptons corridor with consistent tracks
+  const tracks = [
+    { icao:"A1B2C3", callsign:"N123AB", lats:[40.88,40.90,40.915,40.93,40.95], lons:[-73.79,-73.77,-73.747,-73.72,-73.70], alt_band:"high", alt:2500 },
+    { icao:"A4D5E6", callsign:"N456CD", lats:[40.89,40.905,40.918,40.928,40.94], lons:[-73.78,-73.765,-73.747,-73.725,-73.705], alt_band:"high", alt:2200 },
+    { icao:"A7F8G9", callsign:"N789EF", lats:[40.92,40.918,40.912,40.905,40.89], lons:[-73.71,-73.73,-73.747,-73.765,-73.78], alt_band:"medium", alt:1200 },
+    { icao:"AABBCC", callsign:"N321GH", lats:[40.915,40.916,40.917,40.915], lons:[-73.745,-73.748,-73.750,-73.748], alt_band:"low", alt:300 },
+  ];
+
+  tracks.forEach(track => {
+    // Repeat each track multiple times over 30 days, weighted to Fri/Sun
+    for (let day = 0; day < 30; day++) {
+      const dow = new Date((now - day * 86400) * 1000).getDay();
+      const repeats = (dow === 5 || dow === 0) ? 3 : 1; // more on Fri/Sun
+      for (let r = 0; r < repeats; r++) {
+        const baseTs = now - day * 86400 + (dow === 5 ? 54000 : 68400); // Fri 3pm or Sun 7pm
+        track.lats.forEach((lat, i) => {
+          points.push({
+            ts: baseTs + i * 120 + Math.floor(Math.random() * 30),
+            lat: lat + (Math.random()-0.5)*0.003,
+            lon: track.lons[i] + (Math.random()-0.5)*0.003,
+            icao: track.icao,
+            callsign: track.callsign,
+            alt_band: track.alt_band,
+            alt: track.alt,
+            speed: 120 + Math.random() * 40,
+            dist_km: Math.random() * 10,
+          });
+        });
+      }
+    }
+  });
+  return { points, generated: new Date().toISOString(), antenna: ANTENNA };
+}
+
+function loadData(data) {
+  allPoints = data.points || [];
+  document.getElementById("no-data").style.display = allPoints.length === 0 ? "block" : "none";
+  render();
+}
+
+document.getElementById("fileInput").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try { loadData(JSON.parse(ev.target.result)); }
+    catch { alert("Could not parse JSON file."); }
+  };
+  reader.readAsText(file);
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+buildTimeButtons();
+buildFilterListeners();
+initMap();
+
+// Auto-fetch from server, fall back to demo data
+fetch('heatmap_data.json')
+  .then(r => r.json())
+  .then(data => loadData(data))
+  .catch(() => loadData(generateDemoData()));
+</script>
+</body>
+</html>
