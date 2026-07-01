@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Larchmont Helicopter Analytics</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fa; color: #1a1a2e; min-height: 100vh; }
+
+/* ── Header ── */
+#header {
+  background: #1a1a2e; color: #fff; padding: 12px 24px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  border-bottom: 3px solid #e63946;
+}
+#header h1 { font-size: 18px; font-weight: 700; flex: 1; }
+#header .subtitle { font-size: 12px; color: #8b949e; margin-top: 2px; }
+.hdr-btn {
+  font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 16px;
+  border: 1px solid #30363d; background: transparent; color: #8b949e;
+  cursor: pointer; transition: all 0.15s;
+}
+.hdr-btn.active { background: #388bfd22; border-color: #388bfd; color: #58a6ff; }
+.hdr-link {
+  font-size: 11px; color: #58a6ff; text-decoration: none; padding: 5px 10px;
+  border: 1px solid #30363d; border-radius: 16px; white-space: nowrap;
+}
+.hdr-link:hover { border-color: #58a6ff; }
+#dataStatus { font-size: 11px; color: #8b949e; white-space: nowrap; }
+
+/* ── Main grid ── */
+#main { max-width: 1400px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Cards ── */
+.card {
+  background: #fff; border-radius: 12px; padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e8ecf0;
+}
+.card-title {
+  font-size: 13px; font-weight: 700; color: #1a1a2e;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 16px; padding-bottom: 10px;
+  border-bottom: 2px solid #f0f2f5;
+  display: flex; align-items: center; gap: 8px;
+}
+
+/* ── Section 1: Headline + mini map ── */
+#sec1 { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
+.headline-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.zone-card {
+  border-radius: 10px; padding: 14px 16px; text-align: center;
+  border: 2px solid transparent;
+}
+.zone-card.z2  { background: #fff5f0; border-color: #ff4500; }
+.zone-card.z10 { background: #fffbeb; border-color: #ffd700; }
+.zone-card.z46 { background: #f0f6ff; border-color: #3b82f6; }
+.zone-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.zone-big { font-size: 32px; font-weight: 800; line-height: 1; }
+.zone-sub { font-size: 11px; color: #6b7280; margin-top: 4px; }
+.zone-pct { font-size: 18px; font-weight: 700; margin-top: 6px; }
+.z2  .zone-big, .z2  .zone-pct { color: #ff4500; }
+.z10 .zone-big, .z10 .zone-pct { color: #d97706; }
+.z46 .zone-big, .z46 .zone-pct { color: #2563eb; }
+
+.metric-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 12px; }
+.metric-box { background: #f8fafc; border-radius: 8px; padding: 10px 12px; }
+.metric-val { font-size: 20px; font-weight: 700; color: #1a1a2e; }
+.metric-lbl { font-size: 10px; color: #6b7280; margin-top: 2px; }
+
+/* Mini map */
+#mini-map-wrap { border-radius: 10px; overflow: hidden; border: 1px solid #e8ecf0; }
+#mini-map { height: 100%; min-height: 280px; }
+
+/* ── Section 2: Wind roses ── */
+.rose-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.rose-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rose-title { font-size: 12px; font-weight: 600; color: #6b7280; }
+canvas.rose { border-radius: 50%; }
+
+/* ── Section 3: Hour/Day charts ── */
+.chart-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.bar-chart-wrap { }
+.bar-chart-title { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 8px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
+.bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; height: 100%; justify-content: flex-end; }
+.bar-stack { width: 100%; display: flex; flex-direction: column; justify-content: flex-end; border-radius: 3px 3px 0 0; overflow: hidden; min-height: 2px; }
+.bar-seg { width: 100%; transition: height 0.3s; }
+.bar-lbl { font-size: 8px; color: #9ca3af; white-space: nowrap; margin-top: 2px; }
+
+/* ── Section 4: Altitude & speed ── */
+.hist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.hist-wrap { }
+.hist-title { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 10px; }
+.hist-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.hist-label { font-size: 11px; color: #374151; min-width: 110px; }
+.hist-bar-bg { flex: 1; height: 18px; background: #f3f4f6; border-radius: 4px; overflow: hidden; position: relative; }
+.hist-bar { height: 100%; border-radius: 4px; transition: width 0.4s; }
+.hist-pct { font-size: 10px; color: #6b7280; min-width: 36px; text-align: right; }
+.hist-legend { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.hist-legend-item { display: flex; align-items: center; gap: 4px; font-size: 10px; color: #6b7280; }
+.hist-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+/* ── Section 5: Leaderboard ── */
+.lb-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lb-table th { background: #f8fafc; padding: 8px 12px; text-align: left; font-size: 10px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #e8ecf0; }
+.lb-table td { padding: 8px 12px; border-bottom: 1px solid #f0f2f5; }
+.lb-table tr:hover td { background: #f8fafc; }
+.lb-rank { color: #9ca3af; font-weight: 600; }
+.lb-callsign { font-weight: 700; color: #1a1a2e; }
+.lb-icao { color: #6b7280; font-size: 10px; }
+.lb-bar-bg { width: 80px; height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; display: inline-block; vertical-align: middle; margin-right: 6px; }
+.lb-bar-fill { height: 100%; border-radius: 4px; background: #3b82f6; }
+.band-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+
+/* ── Section 6: Daily trend ── */
+#trend-chart { display: flex; align-items: flex-end; gap: 3px; height: 100px; overflow-x: auto; padding-bottom: 2px; }
+.trend-day { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 24px; height: 100%; justify-content: flex-end; }
+.trend-bar { width: 18px; border-radius: 3px 3px 0 0; min-height: 2px; }
+.trend-lbl { font-size: 8px; color: #9ca3af; white-space: nowrap; }
+
+/* ── Zone legend ── */
+.zone-legend { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.zone-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
+.zone-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+/* ── File loader ── */
+.file-btn {
+  font-size: 11px; color: #8b949e; cursor: pointer; padding: 5px 10px;
+  border: 1px solid #30363d; border-radius: 16px; background: transparent;
+  transition: all 0.15s;
+}
+.file-btn:hover { color: #58a6ff; border-color: #58a6ff; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <h1>🚁 Larchmont Helicopter Analytics</h1>
+    </div>
+    <div class="subtitle" id="dataStatus">Loading data…</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-left:auto">
+    <div style="display:flex;gap:4px">
+      <button class="hdr-btn active" id="era46btn" onclick="setEra('46km')">📡 46km data</button>
+      <button class="hdr-btn"        id="eraAllBtn" onclick="setEra('all')">All data</button>
+    </div>
+    <label class="file-btn">
+      📂 Load data
+      <input type="file" id="fileInput" accept=".json" style="display:none">
+    </label>
+    <a class="hdr-link" href="index.html">🗺 Map view →</a>
+  </div>
+</div>
+
+<div id="main">
+
+  <!-- Section 1: Headline + mini map -->
+  <div id="sec1">
+    <div class="card">
+      <div class="card-title">📊 Traffic Concentration — Larchmont vs Wider Area</div>
+      <div class="headline-grid" id="headlineGrid">
+        <div class="zone-card z2">
+          <div class="zone-label">≤ 2km — Larchmont Core</div>
+          <div class="zone-big" id="h2count">—</div>
+          <div class="zone-sub">flights</div>
+          <div class="zone-pct" id="h2pct">—%</div>
+          <div class="zone-sub">of all captured traffic</div>
+        </div>
+        <div class="zone-card z10">
+          <div class="zone-label">≤ 10km — Larchmont Area</div>
+          <div class="zone-big" id="h10count">—</div>
+          <div class="zone-sub">flights</div>
+          <div class="zone-pct" id="h10pct">—%</div>
+          <div class="zone-sub">of all captured traffic</div>
+        </div>
+        <div class="zone-card z46">
+          <div class="zone-label">≤ 46km — Full Capture Zone</div>
+          <div class="zone-big" id="h46count">—</div>
+          <div class="zone-sub">total flights</div>
+          <div class="zone-pct" id="h46days">—</div>
+          <div class="zone-sub">days of data</div>
+        </div>
+      </div>
+      <div class="metric-row" id="metricRow">
+        <div class="metric-box"><div class="metric-val" id="mAvgDay">—</div><div class="metric-lbl">Avg flights/day (≤10km)</div></div>
+        <div class="metric-box"><div class="metric-val" id="mPeakDay">—</div><div class="metric-lbl">Peak day (≤10km)</div></div>
+        <div class="metric-box"><div class="metric-val" id="mUnique">—</div><div class="metric-lbl">Unique aircraft (≤10km)</div></div>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div id="mini-map-wrap" style="height:100%">
+        <div id="mini-map"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2: Wind roses -->
+  <div class="card">
+    <div class="card-title">🧭 Flight Corridor Analysis — Bearing Frequency</div>
+    <div class="rose-grid">
+      <div class="rose-wrap">
+        <div class="rose-title">All captured traffic (≤46km)</div>
+        <canvas id="rose46" width="280" height="280" class="rose"></canvas>
+      </div>
+      <div class="rose-wrap">
+        <div class="rose-title">Near Larchmont traffic (≤10km)</div>
+        <canvas id="rose10" width="280" height="280" class="rose"></canvas>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;text-align:center;margin-top:12px">
+      Bearing calculated between consecutive sightings of same aircraft. Length = frequency. Color = altitude band.
+    </div>
+  </div>
+
+  <!-- Section 3: Hour / Day charts -->
+  <div class="card">
+    <div class="card-title">⏰ Temporal Patterns</div>
+    <div class="zone-legend">
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ff4500"></div>≤2km Larchmont core</div>
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ffd700"></div>≤10km Larchmont area</div>
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#3b82f6"></div>≤46km full zone</div>
+    </div>
+    <div class="chart-pair">
+      <div class="bar-chart-wrap">
+        <div class="bar-chart-title">By hour of day (local time)</div>
+        <div class="bar-chart" id="hourChart"></div>
+      </div>
+      <div class="bar-chart-wrap">
+        <div class="bar-chart-title">By day of week</div>
+        <div class="bar-chart" id="dowChart"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 4: Altitude & Speed -->
+  <div class="card">
+    <div class="card-title">✈ Altitude & Speed Profile</div>
+    <div class="hist-legend">
+      <div class="hist-legend-item"><div class="hist-legend-dot" style="background:#ff4500"></div>≤2km</div>
+      <div class="hist-legend-item"><div class="hist-legend-dot" style="background:#ffd700"></div>≤10km</div>
+      <div class="hist-legend-item"><div class="hist-legend-dot" style="background:#3b82f6"></div>≤46km</div>
+    </div>
+    <div class="hist-grid">
+      <div class="hist-wrap">
+        <div class="hist-title">Altitude band distribution</div>
+        <div id="altHist"></div>
+      </div>
+      <div class="hist-wrap">
+        <div class="hist-title">Speed distribution (knots)</div>
+        <div id="speedHist"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 5: Leaderboard -->
+  <div class="card">
+    <div class="card-title">🏆 Most Frequent Aircraft (≤10km, ranked by trips)</div>
+    <div style="overflow-x:auto">
+      <table class="lb-table" id="lbTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Callsign / ICAO</th>
+            <th>Trips</th>
+            <th>Sightings</th>
+            <th>Avg alt band</th>
+            <th>Trips per week</th>
+            <th>First seen</th>
+            <th>Last seen</th>
+          </tr>
+        </thead>
+        <tbody id="lbBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section 6: Daily trend -->
+  <div class="card">
+    <div class="card-title">📅 Daily Traffic Trend</div>
+    <div class="zone-legend">
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ff4500"></div>≤2km</div>
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ffd700"></div>≤10km</div>
+      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#3b82f6"></div>≤46km</div>
+    </div>
+    <div id="trend-chart"></div>
+    <div style="font-size:10px;color:#9ca3af;margin-top:8px;text-align:center">Stacked bars show sightings per zone per day</div>
+  </div>
+
+</div>
+
+<script>
+const ANTENNA = { lat: 40.91866, lon: -73.74738 };
+const ERA_46KM_TS = 1782746909;
+const GAP_SEC = 900; // 15 min trip gap
+const ALT_COLORS = { low:"#2ea043", midlow:"#e3b341", midhigh:"#ff7b00", high:"#f44336", unknown:"#6e7681" };
+const ZONE_COLORS = { z2:"#ff4500", z10:"#ffd700", z46:"#3b82f6" };
+const ROSE_SEGMENTS = 16;
+
+let allPoints = [];
+let eraFilter = '46km';
+let miniMap, miniHeat;
+
+// ── Era filter ──
+function setEra(era) {
+  eraFilter = era;
+  document.getElementById("era46btn").classList.toggle("active", era==='46km');
+  document.getElementById("eraAllBtn").classList.toggle("active", era==='all');
+  render();
+}
+
+function getFiltered() {
+  return eraFilter==='46km'
+    ? allPoints.filter(p => p.ts >= ERA_46KM_TS)
+    : allPoints;
+}
+
+// ── Haversine ──
+function haversineKm(lat1,lon1,lat2,lon2) {
+  const R=6371, r=Math.PI/180;
+  const dLat=(lat2-lat1)*r, dLon=(lon2-lon1)*r;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*r)*Math.cos(lat2*r)*Math.sin(dLon/2)**2;
+  return R*2*Math.asin(Math.sqrt(a));
+}
+
+// ── Trip counting ──
+function countTrips(points) {
+  if (!points||!points.length) return 0;
+  const s=[...points].sort((a,b)=>a.ts-b.ts);
+  let t=1;
+  for (let i=1;i<s.length;i++) if(s[i].ts-s[i-1].ts>GAP_SEC) t++;
+  return t;
+}
+
+// ── Bearing calculation ──
+function bearing(lat1,lon1,lat2,lon2) {
+  const r=Math.PI/180;
+  const dLon=(lon2-lon1)*r;
+  const y=Math.sin(dLon)*Math.cos(lat2*r);
+  const x=Math.cos(lat1*r)*Math.sin(lat2*r)-Math.sin(lat1*r)*Math.cos(lat2*r)*Math.cos(dLon);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+// ── Mini map ──
+function initMiniMap() {
+  miniMap = L.map("mini-map", { center:[ANTENNA.lat,ANTENNA.lon], zoom:9,
+    zoomControl:false, attributionControl:false });
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    {subdomains:"abcd",maxZoom:19}).addTo(miniMap);
+  // Rings
+  L.circle([ANTENNA.lat,ANTENNA.lon],{radius:2000,   color:"#ff4500",weight:2,opacity:0.9,fillOpacity:0.05,dashArray:"4 3"}).addTo(miniMap);
+  L.circle([ANTENNA.lat,ANTENNA.lon],{radius:10000,  color:"#ffd700",weight:1.5,opacity:0.8,fillOpacity:0.02,dashArray:"6 4"}).addTo(miniMap);
+  L.circle([ANTENNA.lat,ANTENNA.lon],{radius:25000,  color:"#3b82f6",weight:1,opacity:0.5,fillOpacity:0.01,dashArray:"8 5"}).addTo(miniMap);
+  L.circle([ANTENNA.lat,ANTENNA.lon],{radius:46300,  color:"#3b82f6",weight:1,opacity:0.4,fillOpacity:0.01}).addTo(miniMap);
+  L.circleMarker([ANTENNA.lat,ANTENNA.lon],{radius:5,color:"#ff4500",fillColor:"#ff4500",fillOpacity:1}).addTo(miniMap);
+  miniHeat = L.heatLayer([],{radius:25,blur:18,maxZoom:15,minOpacity:0.4,max:3,
+    gradient:{0:"#0000ff",0.4:"#00e676",0.7:"#ffeb3b",1:"#f44336"}}).addTo(miniMap);
+  setTimeout(()=>miniMap.invalidateSize(),200);
+}
+
+function updateMiniMap(pts) {
+  miniHeat.setLatLngs(pts.map(p=>[p.lat,p.lon,1]));
+}
+
+// ── Wind rose ──
+function drawRose(canvasId, points, title) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext("2d");
+  const W=canvas.width, H=canvas.height, cx=W/2, cy=H/2;
+  const R=cx-30;
+  ctx.clearRect(0,0,W,H);
+
+  // Build bearing segments — group by consecutive pairs
+  const segs = new Array(ROSE_SEGMENTS).fill(0);
+  const segColors = new Array(ROSE_SEGMENTS).fill(null);
+  const byIcao = {};
+  points.forEach(p=>{ if(!byIcao[p.icao]) byIcao[p.icao]=[]; byIcao[p.icao].push(p); });
+
+  let total=0;
+  Object.values(byIcao).forEach(arr=>{
+    arr.sort((a,b)=>a.ts-b.ts);
+    for(let i=0;i<arr.length-1;i++){
+      if(arr[i+1].ts-arr[i].ts>GAP_SEC) continue;
+      const b=bearing(arr[i].lat,arr[i].lon,arr[i+1].lat,arr[i+1].lon);
+      const seg=Math.floor(b/(360/ROSE_SEGMENTS))%ROSE_SEGMENTS;
+      segs[seg]++;
+      total++;
+      // dominant color by alt_band
+      if(!segColors[seg]) segColors[seg]={};
+      const band=arr[i].alt_band||"unknown";
+      segColors[seg][band]=(segColors[seg][band]||0)+1;
+    }
+  });
+
+  const maxVal=Math.max(...segs,1);
+
+  // Background rings
+  ctx.strokeStyle="#e5e7eb"; ctx.lineWidth=1;
+  [0.25,0.5,0.75,1].forEach(f=>{
+    ctx.beginPath(); ctx.arc(cx,cy,R*f,0,Math.PI*2); ctx.stroke();
+  });
+
+  // Cardinal lines
+  ctx.strokeStyle="#d1d5db"; ctx.lineWidth=0.5;
+  [0,45,90,135].forEach(deg=>{
+    const rad=deg*Math.PI/180;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+Math.sin(rad)*R, cy-Math.cos(rad)*R);
+    ctx.stroke();
+  });
+
+  // Rose petals
+  const segAngle=(2*Math.PI)/ROSE_SEGMENTS;
+  segs.forEach((val,i)=>{
+    if(val===0) return;
+    const pR=R*(val/maxVal);
+    const startAngle=i*segAngle-Math.PI/2-segAngle/2;
+    const endAngle=startAngle+segAngle;
+
+    // Dominant color for this segment
+    let color="#3b82f6";
+    if(segColors[i]){
+      const dom=Object.entries(segColors[i]).sort((a,b)=>b[1]-a[1])[0]?.[0]||"unknown";
+      color=ALT_COLORS[dom]||"#3b82f6";
+    }
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,pR,startAngle,endAngle);
+    ctx.closePath();
+    ctx.fillStyle=color+"cc";
+    ctx.fill();
+    ctx.strokeStyle=color;
+    ctx.lineWidth=1;
+    ctx.stroke();
+  });
+
+  // Cardinal labels
+  ctx.fillStyle="#374151"; ctx.font="bold 11px system-ui"; ctx.textAlign="center";
+  ctx.fillText("N",cx,cy-R-8);
+  ctx.fillText("S",cx,cy+R+16);
+  ctx.textAlign="right"; ctx.fillText("W",cx-R-6,cy+4);
+  ctx.textAlign="left";  ctx.fillText("E",cx+R+6,cy+4);
+
+  // Center dot
+  ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2);
+  ctx.fillStyle="#1a1a2e"; ctx.fill();
+
+  // Percentage label on largest petal
+  if(total>0) {
+    const maxIdx=segs.indexOf(maxVal);
+    const pct=Math.round(segs[maxIdx]/total*100);
+    const ang=maxIdx*segAngle-Math.PI/2;
+    const pr=R*(maxVal/maxVal)*0.6;
+    ctx.fillStyle="#fff"; ctx.font="bold 10px system-ui"; ctx.textAlign="center";
+    ctx.fillText(pct+"%", cx+Math.cos(ang)*pr, cy+Math.sin(ang)*pr+4);
+  }
+}
+
+// ── Section 1: Headlines ──
+function updateHeadlines(pts) {
+  const byIcao46={}, byIcao10={}, byIcao2={};
+  pts.forEach(p=>{
+    const d=p.dist_km||haversineKm(ANTENNA.lat,ANTENNA.lon,p.lat,p.lon);
+    byIcao46[p.icao]=(byIcao46[p.icao]||[]);
+    byIcao46[p.icao].push(p);
+    if(d<=10){ byIcao10[p.icao]=(byIcao10[p.icao]||[]); byIcao10[p.icao].push(p); }
+    if(d<=2) { byIcao2[p.icao]=(byIcao2[p.icao]||[]);  byIcao2[p.icao].push(p);  }
+  });
+
+  const trips46=Object.values(byIcao46).reduce((s,a)=>s+countTrips(a),0);
+  const trips10=Object.values(byIcao10).reduce((s,a)=>s+countTrips(a),0);
+  const trips2 =Object.values(byIcao2 ).reduce((s,a)=>s+countTrips(a),0);
+
+  const pct10=trips46>0?Math.round(trips10/trips46*100):0;
+  const pct2 =trips46>0?Math.round(trips2 /trips46*100):0;
+
+  document.getElementById("h2count").textContent  = trips2.toLocaleString();
+  document.getElementById("h2pct").textContent    = pct2+"%";
+  document.getElementById("h10count").textContent = trips10.toLocaleString();
+  document.getElementById("h10pct").textContent   = pct10+"%";
+  document.getElementById("h46count").textContent = trips46.toLocaleString();
+
+  // Days of data
+  if(pts.length>0){
+    const minTs=Math.min(...pts.map(p=>p.ts)), maxTs=Math.max(...pts.map(p=>p.ts));
+    const days=Math.max(1,Math.round((maxTs-minTs)/86400));
+    document.getElementById("h46days").textContent = days+" days";
+
+    // Avg per day for ≤10km
+    const avgDay=days>0?(trips10/days).toFixed(1):0;
+    document.getElementById("mAvgDay").textContent = avgDay;
+
+    // Peak day for ≤10km
+    const byDay={};
+    Object.values(byIcao10).flat().forEach(p=>{
+      const d=new Date(p.ts*1000).toLocaleDateString("en-US",{weekday:"short"});
+      byDay[d]=(byDay[d]||0)+1;
+    });
+    const peakDay=Object.entries(byDay).sort((a,b)=>b[1]-a[1])[0]?.[0]||"—";
+    document.getElementById("mPeakDay").textContent = peakDay;
+
+    document.getElementById("mUnique").textContent = Object.keys(byIcao10).length;
+  }
+}
+
+// ── Section 3: Hour / Day charts ──
+function buildBarChart(containerId, labels, data46, data10, data2, maxVal) {
+  const el = document.getElementById(containerId);
+  el.innerHTML="";
+  labels.forEach((lbl,i)=>{
+    const v46=data46[i]||0, v10=data10[i]||0, v2=data2[i]||0;
+    const h46=maxVal>0?Math.round((v46/maxVal)*110):0;
+    const h10=maxVal>0?Math.round((v10/maxVal)*110):0;
+    const h2 =maxVal>0?Math.round((v2 /maxVal)*110):0;
+    el.innerHTML+=`
+      <div class="bar-group" title="${lbl}: ${v46} total, ${v10} ≤10km, ${v2} ≤2km">
+        <div class="bar-stack" style="height:${h46}px">
+          <div class="bar-seg" style="height:${h2}px;background:#ff4500"></div>
+          <div class="bar-seg" style="height:${Math.max(0,h10-h2)}px;background:#ffd700"></div>
+          <div class="bar-seg" style="height:${Math.max(0,h46-h10)}px;background:#3b82f660"></div>
+        </div>
+        <div class="bar-lbl">${lbl}</div>
+      </div>`;
+  });
+}
+
+function updateTemporalCharts(pts) {
+  const pts10=pts.filter(p=>(p.dist_km||99)<=10);
+  const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
+
+  // Hour chart
+  const h46=new Array(24).fill(0), h10=new Array(24).fill(0), h2=new Array(24).fill(0);
+  pts.forEach(p=>{ h46[new Date(p.ts*1000).getHours()]++; });
+  pts10.forEach(p=>{ h10[new Date(p.ts*1000).getHours()]++; });
+  pts2.forEach(p=>{ h2[new Date(p.ts*1000).getHours()]++; });
+  const hLabels=Array.from({length:24},(_,i)=>i%3===0?i+"h":"");
+  buildBarChart("hourChart",hLabels,h46,h10,h2,Math.max(...h46,1));
+
+  // Day of week chart
+  const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const d46=new Array(7).fill(0), d10=new Array(7).fill(0), d2=new Array(7).fill(0);
+  pts.forEach(p=>{ d46[new Date(p.ts*1000).getDay()]++; });
+  pts10.forEach(p=>{ d10[new Date(p.ts*1000).getDay()]++; });
+  pts2.forEach(p=>{ d2[new Date(p.ts*1000).getDay()]++; });
+  buildBarChart("dowChart",days,d46,d10,d2,Math.max(...d46,1));
+}
+
+// ── Section 4: Altitude & Speed histograms ──
+function updateAltHist(pts) {
+  const pts10=pts.filter(p=>(p.dist_km||99)<=10);
+  const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
+  const bands=[
+    {key:"low",    label:"Low <800ft",        color:ALT_COLORS.low},
+    {key:"midlow", label:"Mid 800–1500ft",     color:ALT_COLORS.midlow},
+    {key:"midhigh",label:"Mid-High 1500–1750ft",color:ALT_COLORS.midhigh},
+    {key:"high",   label:"High >1750ft",       color:ALT_COLORS.high},
+    {key:"unknown",label:"Unknown",            color:ALT_COLORS.unknown},
+  ];
+  const el=document.getElementById("altHist");
+  el.innerHTML="";
+  bands.forEach(b=>{
+    const c46=pts.filter(p=>(p.alt_band||"unknown")===b.key).length;
+    const c10=pts10.filter(p=>(p.alt_band||"unknown")===b.key).length;
+    const c2 =pts2.filter(p=>(p.alt_band||"unknown")===b.key).length;
+    const pct46=pts.length>0?Math.round(c46/pts.length*100):0;
+    const pct10=pts10.length>0?Math.round(c10/pts10.length*100):0;
+    const pct2 =pts2.length>0?Math.round(c2/pts2.length*100):0;
+    el.innerHTML+=`
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:#374151;margin-bottom:4px;display:flex;align-items:center;gap:6px">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${b.color}"></span>${b.label}
+        </div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#ff4500">≤2km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct2}%;background:#ff4500"></div></div>
+          <span class="hist-pct">${pct2}%</span>
+        </div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#d97706">≤10km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct10}%;background:#ffd700"></div></div>
+          <span class="hist-pct">${pct10}%</span>
+        </div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#2563eb">≤46km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct46}%;background:#3b82f6"></div></div>
+          <span class="hist-pct">${pct46}%</span>
+        </div>
+      </div>`;
+  });
+}
+
+function updateSpeedHist(pts) {
+  const pts10=pts.filter(p=>(p.dist_km||99)<=10);
+  const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
+  const bins=[
+    {label:"<50 kts", min:0,  max:50},
+    {label:"50–100",  min:50, max:100},
+    {label:"100–150", min:100,max:150},
+    {label:"150–200", min:150,max:200},
+    {label:">200 kts",min:200,max:9999},
+  ];
+  const el=document.getElementById("speedHist");
+  el.innerHTML="";
+  const hasSp=p=>p.speed!=null;
+  const sp46=pts.filter(hasSp), sp10=pts10.filter(hasSp), sp2=pts2.filter(hasSp);
+  if(sp46.length===0){el.innerHTML='<div style="color:#9ca3af;font-size:12px">No speed data available</div>';return;}
+  bins.forEach(b=>{
+    const c46=sp46.filter(p=>p.speed>=b.min&&p.speed<b.max).length;
+    const c10=sp10.filter(p=>p.speed>=b.min&&p.speed<b.max).length;
+    const c2 =sp2.filter(p=>p.speed>=b.min&&p.speed<b.max).length;
+    const pct46=sp46.length>0?Math.round(c46/sp46.length*100):0;
+    const pct10=sp10.length>0?Math.round(c10/sp10.length*100):0;
+    const pct2 =sp2.length>0?Math.round(c2/sp2.length*100):0;
+    el.innerHTML+=`
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:#374151;margin-bottom:4px">${b.label}</div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#ff4500">≤2km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct2}%;background:#ff4500"></div></div>
+          <span class="hist-pct">${pct2}%</span>
+        </div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#d97706">≤10km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct10}%;background:#ffd700"></div></div>
+          <span class="hist-pct">${pct10}%</span>
+        </div>
+        <div class="hist-row">
+          <span class="hist-label" style="font-size:10px;color:#2563eb">≤46km</span>
+          <div class="hist-bar-bg"><div class="hist-bar" style="width:${pct46}%;background:#3b82f6"></div></div>
+          <span class="hist-pct">${pct46}%</span>
+        </div>
+      </div>`;
+  });
+}
+
+// ── Section 5: Leaderboard ──
+function updateLeaderboard(pts) {
+  const pts10=pts.filter(p=>(p.dist_km||99)<=10);
+  const byIcao={}, callsigns={}, bands={}, firstSeen={}, lastSeen={};
+  pts10.forEach(p=>{
+    if(!byIcao[p.icao]) byIcao[p.icao]=[];
+    byIcao[p.icao].push(p);
+    if(p.callsign) callsigns[p.icao]=p.callsign;
+    if(!bands[p.icao]) bands[p.icao]={};
+    const b=p.alt_band||"unknown";
+    bands[p.icao][b]=(bands[p.icao][b]||0)+1;
+    if(!firstSeen[p.icao]||p.ts<firstSeen[p.icao]) firstSeen[p.icao]=p.ts;
+    if(!lastSeen[p.icao]||p.ts>lastSeen[p.icao]) lastSeen[p.icao]=p.ts;
+  });
+
+  const ranked=Object.entries(byIcao)
+    .map(([icao,arr])=>({icao,trips:countTrips(arr),sightings:arr.length}))
+    .sort((a,b)=>b.trips-a.trips).slice(0,25);
+
+  const maxTrips=ranked[0]?.trips||1;
+  const fmt=ts=>new Date(ts*1000).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"2-digit"});
+
+  // Calculate weeks of data for trips/week
+  const allTs=pts10.map(p=>p.ts);
+  const weeks=allTs.length>0?Math.max(1,(Math.max(...allTs)-Math.min(...allTs))/604800):1;
+
+  const tbody=document.getElementById("lbBody");
+  tbody.innerHTML="";
+  ranked.forEach(({icao,trips,sightings},i)=>{
+    const callsign=callsigns[icao]||"—";
+    const domBand=Object.entries(bands[icao]||{}).sort((a,b)=>b[1]-a[1])[0]?.[0]||"unknown";
+    const color=ALT_COLORS[domBand]||"#6e7681";
+    const tripsPerWeek=(trips/weeks).toFixed(1);
+    const barW=Math.round(trips/maxTrips*80);
+    tbody.innerHTML+=`
+      <tr>
+        <td class="lb-rank">${i+1}</td>
+        <td><div class="lb-callsign">${callsign}</div><div class="lb-icao">${icao}</div></td>
+        <td>
+          <span class="lb-bar-bg"><span class="lb-bar-fill" style="width:${barW}px"></span></span>
+          <strong>${trips}</strong>
+        </td>
+        <td>${sightings}</td>
+        <td><span class="band-dot" style="background:${color}"></span>${domBand}</td>
+        <td>${tripsPerWeek}</td>
+        <td>${firstSeen[icao]?fmt(firstSeen[icao]):"—"}</td>
+        <td>${lastSeen[icao]?fmt(lastSeen[icao]):"—"}</td>
+      </tr>`;
+  });
+}
+
+// ── Section 6: Daily trend ──
+function updateTrend(pts) {
+  const pts10=pts.filter(p=>(p.dist_km||99)<=10);
+  const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
+  const byDay46={}, byDay10={}, byDay2={};
+  const fmtDay=ts=>new Date(ts*1000).toLocaleDateString("en-US",{month:"numeric",day:"numeric"});
+  pts.forEach(p=>{   const d=fmtDay(p.ts); byDay46[d]=(byDay46[d]||0)+1; });
+  pts10.forEach(p=>{ const d=fmtDay(p.ts); byDay10[d]=(byDay10[d]||0)+1; });
+  pts2.forEach(p=>{  const d=fmtDay(p.ts); byDay2[d]=(byDay2[d]||0)+1;  });
+
+  const days=Object.keys(byDay46).sort((a,b)=>new Date(a)-new Date(b));
+  const max46=Math.max(...days.map(d=>byDay46[d]||0),1);
+  const el=document.getElementById("trend-chart");
+  el.innerHTML="";
+  days.forEach(d=>{
+    const v46=byDay46[d]||0, v10=byDay10[d]||0, v2=byDay2[d]||0;
+    const h46=Math.round(v46/max46*95), h10=Math.round(v10/max46*95), h2=Math.round(v2/max46*95);
+    const parts=d.split("/");
+    el.innerHTML+=`
+      <div class="trend-day" title="${d}: ${v46} total, ${v10} ≤10km, ${v2} ≤2km">
+        <div style="position:relative;width:18px;height:${h46}px">
+          <div style="position:absolute;bottom:0;width:100%;height:${h46}px;background:#3b82f630;border-radius:3px 3px 0 0"></div>
+          <div style="position:absolute;bottom:0;width:100%;height:${h10}px;background:#ffd700;border-radius:3px 3px 0 0"></div>
+          <div style="position:absolute;bottom:0;width:100%;height:${h2}px;background:#ff4500;border-radius:3px 3px 0 0"></div>
+        </div>
+        <div class="trend-lbl">${parts[0]}/${parts[1]}</div>
+      </div>`;
+  });
+}
+
+// ── Master render ──
+function render() {
+  const pts = getFiltered();
+  if(pts.length===0) {
+    document.getElementById("dataStatus").textContent="No data — load heatmap_data.json";
+    return;
+  }
+  const minTs=Math.min(...pts.map(p=>p.ts)), maxTs=Math.max(...pts.map(p=>p.ts));
+  const fmt=ts=>new Date(ts*1000).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+  document.getElementById("dataStatus").textContent=
+    `${pts.length.toLocaleString()} sightings · ${fmt(minTs)} → ${fmt(maxTs)} · ${eraFilter==='46km'?'46km era only':'All data'}`;
+
+  updateHeadlines(pts);
+  updateMiniMap(pts);
+  drawRose("rose46", pts, "All traffic");
+  drawRose("rose10", pts.filter(p=>(p.dist_km||99)<=10), "≤10km traffic");
+  updateTemporalCharts(pts);
+  updateAltHist(pts);
+  updateSpeedHist(pts);
+  updateLeaderboard(pts);
+  updateTrend(pts);
+}
+
+// ── Data loading ──
+function loadData(data) {
+  allPoints = data.points||[];
+  render();
+}
+
+document.getElementById("fileInput").addEventListener("change", e=>{
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{ try{loadData(JSON.parse(ev.target.result));}catch{alert("Could not parse JSON.");} };
+  reader.readAsText(file);
+});
+
+// ── Boot ──
+initMiniMap();
+fetch('heatmap_data.json')
+  .then(r=>r.json())
+  .then(data=>loadData(data))
+  .catch(()=>{ document.getElementById("dataStatus").textContent="No data file found — use 📂 Load data button"; });
+</script>
+</body>
+</html>
