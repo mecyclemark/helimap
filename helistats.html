@@ -126,6 +126,18 @@ canvas.rose { border-radius: 50%; }
 .zone-legend { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
 .zone-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
 .zone-legend-dot { width: 12px; height: 12px; border-radius: 50%; }
+.zone-toggle { cursor: pointer; padding: 3px 8px; border-radius: 12px; transition: all 0.15s; user-select: none; }
+.zone-toggle:hover { background: #f3f4f6; }
+.zone-toggle.off { opacity: 0.3; }
+
+/* ── Light chip buttons (for use on white card backgrounds) ── */
+.chip-btn {
+  font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 16px;
+  border: 1px solid #d1d5db; background: #fff; color: #374151;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.chip-btn.active { background: #1a1a2e; border-color: #1a1a2e; color: #fff; }
+.chip-btn:hover { border-color: #1a1a2e; }
 
 /* ── File loader ── */
 .file-btn {
@@ -282,14 +294,23 @@ canvas.rose { border-radius: 50%; }
 
   <!-- Section 6: Daily trend -->
   <div class="card">
-    <div class="card-title">📅 Daily Traffic Trend</div>
-    <div class="zone-legend">
-      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ff4500"></div>≤2km</div>
-      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#ffd700"></div>≤10km</div>
-      <div class="zone-legend-item"><div class="zone-legend-dot" style="background:#3b82f6"></div>≤46km</div>
+    <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:none;margin-bottom:8px;padding-bottom:0">
+      <span style="border-bottom:2px solid #f0f2f5;padding-bottom:10px;flex:1">📅 Daily Traffic Trend</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;border-bottom:2px solid #f0f2f5;padding-bottom:14px;margin-bottom:14px">
+      <div class="zone-legend" id="trendZoneToggles" style="margin-bottom:0">
+        <div class="zone-legend-item zone-toggle" data-zone="z2" onclick="toggleTrendZone('z2')"><div class="zone-legend-dot" style="background:#ff4500"></div>≤2km</div>
+        <div class="zone-legend-item zone-toggle" data-zone="z10" onclick="toggleTrendZone('z10')"><div class="zone-legend-dot" style="background:#ffd700"></div>≤10km</div>
+        <div class="zone-legend-item zone-toggle" data-zone="z46" onclick="toggleTrendZone('z46')"><div class="zone-legend-dot" style="background:#3b82f6"></div>≤46km</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="chip-btn active" id="trendWinInception" onclick="setTrendWindow('inception')">Since Inception</button>
+        <button class="chip-btn" id="trendWin30" onclick="setTrendWindow('30d')">Last 30 Days</button>
+        <button class="chip-btn" id="trendDownloadBtn" onclick="downloadTrendCSV()">⬇ Download CSV</button>
+      </div>
     </div>
     <div id="trend-chart"></div>
-    <div style="font-size:10px;color:#9ca3af;margin-top:8px;text-align:center">Stacked bars show sightings per zone per day</div>
+    <div style="font-size:10px;color:#9ca3af;margin-top:8px;text-align:center">Stacked bars show sightings per zone per day · click a zone above to show/hide it (scale adjusts to what's visible)</div>
   </div>
 
 </div>
@@ -305,6 +326,9 @@ const ROSE_SEGMENTS = 16;
 let allPoints = [];
 let eraFilter = '46km';
 let miniMap, miniHeat;
+let trendWindow = 'inception'; // 'inception' | '30d' — independent of the header era filter
+let trendZones = { z2: true, z10: true, z46: true };
+let lastTrendData = []; // cached rows for CSV export, kept in sync with the last render
 
 // ── Era filter ──
 function setEra(era) {
@@ -690,33 +714,97 @@ function updateLeaderboard(pts) {
 }
 
 // ── Section 6: Daily trend ──
+function dayKey(ts) {
+  // Local-time, sortable, unambiguous across year boundaries (unlike "M/D" alone)
+  const d = new Date(ts*1000);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 function updateTrend(pts) {
   const pts10=pts.filter(p=>(p.dist_km||99)<=10);
   const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
   const byDay46={}, byDay10={}, byDay2={};
-  const fmtDay=ts=>new Date(ts*1000).toLocaleDateString("en-US",{month:"numeric",day:"numeric"});
-  pts.forEach(p=>{   const d=fmtDay(p.ts); byDay46[d]=(byDay46[d]||0)+1; });
-  pts10.forEach(p=>{ const d=fmtDay(p.ts); byDay10[d]=(byDay10[d]||0)+1; });
-  pts2.forEach(p=>{  const d=fmtDay(p.ts); byDay2[d]=(byDay2[d]||0)+1;  });
+  pts.forEach(p=>{   const d=dayKey(p.ts); byDay46[d]=(byDay46[d]||0)+1; });
+  pts10.forEach(p=>{ const d=dayKey(p.ts); byDay10[d]=(byDay10[d]||0)+1; });
+  pts2.forEach(p=>{  const d=dayKey(p.ts); byDay2[d]=(byDay2[d]||0)+1;  });
 
-  const days=Object.keys(byDay46).sort((a,b)=>new Date(a)-new Date(b));
-  const max46=Math.max(...days.map(d=>byDay46[d]||0),1);
+  let days=Object.keys(byDay46).sort((a,b)=>new Date(a)-new Date(b));
+
+  // "Last 30 Days" window — calendar cutoff from the most recent observed day,
+  // so gaps in data don't quietly stretch the window wider than intended.
+  if (trendWindow === '30d' && days.length) {
+    const maxDate = new Date(days[days.length-1]);
+    const cutoff = new Date(maxDate);
+    cutoff.setDate(cutoff.getDate() - 29);
+    days = days.filter(d => new Date(d) >= cutoff);
+  }
+
+  // Scale off whichever zones are actually visible, so isolating ≤2km
+  // fills the chart instead of being dwarfed by the ≤46km scale.
+  const visibleVals=[];
+  if (trendZones.z46) days.forEach(d=>visibleVals.push(byDay46[d]||0));
+  if (trendZones.z10) days.forEach(d=>visibleVals.push(byDay10[d]||0));
+  if (trendZones.z2)  days.forEach(d=>visibleVals.push(byDay2[d]||0));
+  const maxV=Math.max(...visibleVals,1);
+
   const el=document.getElementById("trend-chart");
   el.innerHTML="";
+  lastTrendData=[];
+
   days.forEach(d=>{
     const v46=byDay46[d]||0, v10=byDay10[d]||0, v2=byDay2[d]||0;
-    const h46=Math.round(v46/max46*95), h10=Math.round(v10/max46*95), h2=Math.round(v2/max46*95);
-    const parts=d.split("/");
+    lastTrendData.push({date:d, le2km:v2, le10km:v10, le46km:v46});
+
+    const h46=Math.round(v46/maxV*95), h10=Math.round(v10/maxV*95), h2=Math.round(v2/maxV*95);
+    let layers="";
+    if (trendZones.z46) layers+=`<div style="position:absolute;bottom:0;width:100%;height:${h46}px;background:#3b82f630;border-radius:3px 3px 0 0"></div>`;
+    if (trendZones.z10) layers+=`<div style="position:absolute;bottom:0;width:100%;height:${h10}px;background:#ffd700;border-radius:3px 3px 0 0"></div>`;
+    if (trendZones.z2)  layers+=`<div style="position:absolute;bottom:0;width:100%;height:${h2}px;background:#ff4500;border-radius:3px 3px 0 0"></div>`;
+    const maxH=Math.max(trendZones.z46?h46:0, trendZones.z10?h10:0, trendZones.z2?h2:0, 2);
+
+    const [y,m,dd]=d.split("-");
     el.innerHTML+=`
       <div class="trend-day" title="${d}: ${v46} total, ${v10} ≤10km, ${v2} ≤2km">
-        <div style="position:relative;width:18px;height:${h46}px">
-          <div style="position:absolute;bottom:0;width:100%;height:${h46}px;background:#3b82f630;border-radius:3px 3px 0 0"></div>
-          <div style="position:absolute;bottom:0;width:100%;height:${h10}px;background:#ffd700;border-radius:3px 3px 0 0"></div>
-          <div style="position:absolute;bottom:0;width:100%;height:${h2}px;background:#ff4500;border-radius:3px 3px 0 0"></div>
-        </div>
-        <div class="trend-lbl">${parts[0]}/${parts[1]}</div>
+        <div style="position:relative;width:18px;height:${maxH}px">${layers}</div>
+        <div class="trend-lbl">${Number(m)}/${Number(dd)}</div>
       </div>`;
   });
+}
+
+function refreshTrend() {
+  // Re-render just the trend chart, independent of the header era-filter render()
+  updateTrend(getFiltered());
+}
+
+function setTrendWindow(w) {
+  trendWindow = w;
+  document.getElementById("trendWinInception").classList.toggle("active", w==='inception');
+  document.getElementById("trendWin30").classList.toggle("active", w==='30d');
+  refreshTrend();
+}
+
+function toggleTrendZone(zone) {
+  // Guard against toggling the last visible zone off entirely
+  const otherZonesOn = Object.keys(trendZones).some(z => z!==zone && trendZones[z]);
+  if (trendZones[zone] && !otherZonesOn) return;
+  trendZones[zone] = !trendZones[zone];
+  document.querySelector(`.zone-toggle[data-zone="${zone}"]`).classList.toggle("off", !trendZones[zone]);
+  refreshTrend();
+}
+
+function downloadTrendCSV() {
+  if (!lastTrendData.length) { alert("No data loaded yet."); return; }
+  const header="date,le2km,le10km,le46km\n";
+  const rows=lastTrendData.map(r=>`${r.date},${r.le2km},${r.le10km},${r.le46km}`).join("\n");
+  const blob=new Blob([header+rows], {type:"text/csv"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=`larchmont_heli_daily_trend_${trendWindow}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ── Master render ──
