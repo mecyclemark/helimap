@@ -310,7 +310,7 @@ canvas.rose { border-radius: 50%; }
       </div>
     </div>
     <div id="trend-chart"></div>
-    <div style="font-size:10px;color:#9ca3af;margin-top:8px;text-align:center">Stacked bars show sightings per zone per day · click a zone above to show/hide it (scale adjusts to what's visible)</div>
+    <div style="font-size:10px;color:#9ca3af;margin-top:8px;text-align:center">Stacked bars show unique flights (trips) per zone per day · click a zone above to show/hide it (scale adjusts to what's visible)</div>
   </div>
 
 </div>
@@ -721,14 +721,41 @@ function dayKey(ts) {
 }
 
 function updateTrend(pts) {
+  const GAP_SECONDS = 900; // 15-min same-ICAO gap = one trip, matches leaderboard/zone-breakdown logic elsewhere on this page
+
   const pts10=pts.filter(p=>(p.dist_km||99)<=10);
   const pts2 =pts.filter(p=>(p.dist_km||99)<=2);
-  const byDay46={}, byDay10={}, byDay2={};
-  pts.forEach(p=>{   const d=dayKey(p.ts); byDay46[d]=(byDay46[d]||0)+1; });
-  pts10.forEach(p=>{ const d=dayKey(p.ts); byDay10[d]=(byDay10[d]||0)+1; });
-  pts2.forEach(p=>{  const d=dayKey(p.ts); byDay2[d]=(byDay2[d]||0)+1;  });
 
-  let days=Object.keys(byDay46).sort((a,b)=>new Date(a)-new Date(b));
+  // "Observed days" = any raw point that day, in ANY zone — used only to know
+  // which days to show (including zero-trip days), independent of trip chaining.
+  const observedDays = new Set();
+  pts.forEach(p=>observedDays.add(dayKey(p.ts)));
+  let days = Array.from(observedDays).sort((a,b)=>new Date(a)-new Date(b));
+
+  // Chain same-ICAO points within each zone into trips (matching dow_hour_analysis.py),
+  // then count trip STARTS per day — this is what actually answers "how many flights,"
+  // independent of how many times each flight got polled.
+  function tripsPerDay(zonePts) {
+    const byIcao = {};
+    zonePts.forEach(p => { (byIcao[p.icao] = byIcao[p.icao] || []).push(p.ts); });
+    const counts = {};
+    Object.values(byIcao).forEach(tsList => {
+      tsList.sort((a,b)=>a-b);
+      let prev = null;
+      tsList.forEach(ts => {
+        if (prev === null || (ts - prev) > GAP_SECONDS) {
+          const d = dayKey(ts);
+          counts[d] = (counts[d]||0) + 1;
+        }
+        prev = ts;
+      });
+    });
+    return counts;
+  }
+
+  const byDay46 = tripsPerDay(pts);
+  const byDay10 = tripsPerDay(pts10);
+  const byDay2  = tripsPerDay(pts2);
 
   // "Last 30 Days" window — calendar cutoff from the most recent observed day,
   // so gaps in data don't quietly stretch the window wider than intended.
