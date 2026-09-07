@@ -160,8 +160,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; c
 <div id="header">
   <h1>🚁 Helicopter Traffic — Larchmont, NY</h1>
   <div class="btn-group">
-    <button class="mode-btn active" id="modeHeat" onclick="setMode('heat')">🔥 Heatmap</button>
-    <button class="mode-btn"        id="modeTrail" onclick="setMode('trail')">✈ Trails</button>
+    <button class="mode-btn"        id="modeHeat" onclick="setMode('heat')">🔥 Heatmap</button>
+    <button class="mode-btn active" id="modeTrail" onclick="setMode('trail')">✈ Trails</button>
   </div>
   <div class="btn-group" id="timeBtns"></div>
   <div class="btn-group">
@@ -339,8 +339,8 @@ const TOD_RANGES = { night:[0,6], morning:[6,12], afternoon:[12,18], evening:[18
 
 let map, heatLayer, trailLayer;
 let allPoints = [];
-let activeRange = TIME_RANGES[3];
-let currentMode = 'heat';
+let activeRange = TIME_RANGES[2];
+let currentMode = 'trail';
 let selectedIcao = null;
 let nearLarchmont = false; // filter to aircraft that came within 10km
 let trailGapSec = DEFAULT_GAP_SEC; // current gap window in seconds
