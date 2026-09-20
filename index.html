@@ -360,7 +360,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 // ── Map init ──
 function initMap() {
   map = L.map("map", { center:[ANTENNA.lat, ANTENNA.lon], zoom:10, preferCanvas:true });
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_3rda_1_59fd94a2299d405f316c1dd2", {
     attribution:'&copy; <a href="https://carto.com/">CARTO</a>',
     subdomains:"abcd", maxZoom:19,
   }).addTo(map);

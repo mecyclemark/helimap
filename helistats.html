@@ -374,7 +374,7 @@ function bearing(lat1,lon1,lat2,lon2) {
 function initMiniMap() {
   miniMap = L.map("mini-map", { center:[ANTENNA.lat,ANTENNA.lon], zoom:9,
     zoomControl:false, attributionControl:false });
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=cb1_3rda_1_59fd94a2299d405f316c1dd2",
     {subdomains:"abcd",maxZoom:19}).addTo(miniMap);
   // Rings
   L.circle([ANTENNA.lat,ANTENNA.lon],{radius:2000,   color:"#ff4500",weight:2,opacity:0.9,fillOpacity:0.05,dashArray:"4 3"}).addTo(miniMap);
